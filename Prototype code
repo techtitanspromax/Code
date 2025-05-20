@@ -1,0 +1,164 @@
+#include "thingProperties.h"
+#include <Wire.h>
+#include <LCD_I2C.h>
+
+#define relayPin 2
+#define wet 210
+#define dry 510
+
+int analogInPinA0 = A0;  // Soil moisture
+int analogInPinA3 = A3;  // Battery voltage
+int sensorValue;
+int moisture;
+float calibration = 0.36;
+
+LCD_I2C lcd(0x27, 20, 4);
+
+unsigned long lastUpdate = 0;
+const unsigned long updateInterval = 6000; // Update every 6 seconds
+
+// Custom characters for loading bar
+byte loadingChars[6][8] = {
+  {B00000, B00000, B00000, B00000, B00000, B00000, B00000, B00000},
+  {B10000, B10000, B10000, B10000, B10000, B10000, B10000, B10000},
+  {B11000, B11000, B11000, B11000, B11000, B11000, B11000, B11000},
+  {B11100, B11100, B11100, B11100, B11100, B11100, B11100, B11100},
+  {B11110, B11110, B11110, B11110, B11110, B11110, B11110, B11110},
+  {B11111, B11111, B11111, B11111, B11111, B11111, B11111, B11111}
+};
+
+void setup() {
+  Serial.begin(9600);
+  delay(1500);
+
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, HIGH); // Relay off initially
+
+  initProperties();
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection);
+  setDebugMessageLevel(2);
+  ArduinoCloud.printDebugInfo();
+
+  Wire.begin(); // Initialize I2C
+  lcd.begin();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(4, 1);
+  lcd.print("WELCOME!!");
+  delay(2000);
+  lcd.clear();
+
+  // Create loading bar characters
+  for (int i = 0; i < 6; i++) {
+    lcd.createChar(i, loadingChars[i]);
+  }
+
+  lcd.setCursor(2, 1);
+  lcd.print("LOADING...");
+  lcd.setCursor(0, 2);
+  for (int i = 0; i < 16; i++) {
+    for (int level = 1; level <= 5; level++) {
+      lcd.setCursor(i, 1);
+      lcd.write(byte(level));
+      delay(100);
+    }
+  }
+
+  delay(1000);
+  lcd.clear();
+  lcd.setCursor(4, 1);
+  lcd.print("DONE!");
+  delay(1000);
+  lcd.clear();
+}
+
+void loop() {
+  Serial.println(bat_percentage);
+  Serial.println(moisture);
+  Serial.println(voltage);
+
+  ArduinoCloud.update();
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastUpdate >= updateInterval) {
+    lastUpdate = currentMillis;
+    readSoilMoisture();
+    batteryPercent();
+    updateLCD();
+  }
+}
+
+void updateLCD() {
+  // Optionally skip LCD if I2C bus is locked
+
+
+  lcd.setCursor(0, 0);
+  lcd.print("Moisture: ");
+  lcd.print(sensor);
+  lcd.print("%   ");
+
+  lcd.setCursor(0, 1);
+  if (sensor >= 70) {
+    lcd.print("Soil: Wet     ");
+  } else if (sensor >= 40) {
+    lcd.print("Soil: Moist   ");
+  } else {
+    lcd.print("Soil: Dry     ");
+  }
+
+
+  
+  lcd.setCursor(0, 3);
+  lcd.print("Battery: ");
+  lcd.print(bat_percentage);
+  lcd.print("%   ");
+
+  
+  if (!Wire.available()) return; // Prevent blocking if I2C crashed
+}
+
+void readSoilMoisture() {
+  int rawValue = analogRead(analogInPinA0);
+  int mappedMoisture = map(rawValue, dry, wet, 0, 100);
+  mappedMoisture = constrain(mappedMoisture, 0, 100);
+  sensor = mappedMoisture;
+}
+
+float mapfloat(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+void batteryPercent() {
+  sensorValue = analogRead(analogInPinA3);
+  voltage = (((sensorValue * 3.3) / 1024) * 2 + calibration); // voltage divider
+
+  bat_percentage = mapfloat(voltage, 2.8, 7.4, 0, 100); // adjust max voltage if needed
+
+  if (bat_percentage >= 100) bat_percentage = 100;
+  if (bat_percentage <= 0) bat_percentage = 1;
+
+  Serial.print("Analog Value = ");
+  Serial.print(sensorValue);
+  Serial.print("\tOutput Voltage = ");
+  Serial.print(voltage);
+  Serial.print("\tBattery Percentage = ");
+  Serial.println(bat_percentage);
+}
+
+void onRelayChange() {
+  if (relay) {
+    digitalWrite(relayPin, LOW); // Turn pump ON
+    delay(100); // Short delay to settle
+  } else {
+    digitalWrite(relayPin, HIGH); // Turn pump OFF
+    delay(100);
+  }
+}
+
+void onSensorChange() {
+  // Not used
+}
+
+void onLcdChange() {
+  // Not used
+}
