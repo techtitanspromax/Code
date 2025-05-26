@@ -1,21 +1,19 @@
 #include "thingProperties.h"
 #include <Wire.h>
 #include <LCD_I2C.h>
-
 #define relayPin 2
 #define wet 210
 #define dry 510
 
 int analogInPinA0 = A0;  // Soil moisture sensor pin
 int analogInPin = A2;    // Battery voltage analog pin
-
 int sensorValue;
 float calibration = 0.36; // Adjust this using multimeter reading
 
 LCD_I2C lcd(0x27, 20, 4);
 
 unsigned long lastUpdate = 0;
-const unsigned long updateInterval = 850; // 500ms
+const unsigned long updateInterval = 1000; // 1s
 
 void setup() {
   Serial.begin(9600);
@@ -33,9 +31,7 @@ void setup() {
   lcd.begin();
   lcd.backlight();
   lcd.clear();
-  lcd.setCursor(4, 1);
-  lcd.print("WELCOME!!");
-  delay(1000);
+
 }
 
 void loop() {
@@ -79,6 +75,16 @@ void readSoilMoisture() {
   sensor = constrain(mappedMoisture, 0, 100);
 }
 
+
+
+void onRelayChange() {
+  if (relay) {
+    digitalWrite(relayPin, LOW); // Turn ON
+  } else {
+    digitalWrite(relayPin, HIGH); // Turn OFF
+  }
+}
+
 void updateLCD() {
   lcd.setCursor(0, 0);
   lcd.print("Moisture: ");
@@ -93,19 +99,10 @@ void updateLCD() {
   } else {
     lcd.print("Soil: Dry     ");
   }
-
   lcd.setCursor(0, 3);
   lcd.print("Battery: ");
   lcd.print(bat_percentage);
   lcd.print("%   ");
-}
-
-void onRelayChange() {
-  if (relay) {
-    digitalWrite(relayPin, LOW); // Turn ON
-  } else {
-    digitalWrite(relayPin, HIGH); // Turn OFF
-  }
 }
 
 void onSensorChange() {}
